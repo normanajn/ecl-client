@@ -326,6 +326,9 @@ for s in ecl-logbook ecl-track-steps ecl-embed; do
 done
 ```
 
+To set up another machine from scratch (dependencies, build, install, skills
+and credentials files), follow [docs/INSTALL_SKILLS.md](docs/INSTALL_SKILLS.md).
+
 ## Embedding in other projects
 
 The library, the CLI and the Python module are all meant to be called from other

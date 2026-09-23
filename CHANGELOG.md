@@ -4,6 +4,12 @@ Tags follow `vMAJOR.MINOR.PATCH`. From v1.0.0 the tag, `CMakeLists.txt`
 `project(VERSION)` (compiled into `ecl_version()`, `ecl-post --version` and the
 User-Agent), `pyproject.toml`, `ecl-track --version` and the man pages all agree.
 
+## Unreleased
+
+- Add `docs/INSTALL_SKILLS.md`: new-machine setup for ecl-client and the
+  Claude Code skills.
+- Add `mu2e-logo.png`, which `docs/LIVE_TESTING.md` uses as the test image.
+
 ## v1.0.0 (2026-09-23)
 
 First production release.
