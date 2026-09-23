@@ -40,8 +40,20 @@ Full option reference: `man "$ECL_HOME/man/ecl-post.1"`.
 [ -n "${ECL_PASSWORD:+set}" ] && echo "ECL_PASSWORD: set" || echo "ECL_PASSWORD: not set"
 echo "ECL_USERNAME=${ECL_USERNAME:-<unset>} ECL_AUTH=${ECL_AUTH:-<unset>} ECL_INSTANCE=${ECL_INSTANCE:-<unset>}"
 CFG=${XDG_CONFIG_HOME:-$HOME/.config}/ecl-client/config
-[ -f "$CFG" ] && { stat -c '%a %n' "$CFG" 2>/dev/null || stat -f '%Lp %N' "$CFG"; grep -vE '^[[:space:]]*password' "$CFG"; }
+[ -f "$CFG" ] && { stat -c '%a %n' "$CFG" 2>/dev/null || stat -f '%Lp %N' "$CFG"
+  awk -F= '/^[[:space:]]*(#|$)/ {next}
+    { k=$1; gsub(/[[:space:]]/,"",k); v=substr($0,index($0,"=")+1); gsub(/^[[:space:]]+|[[:space:]]+$/,"",v)
+      ok = (k=="auth" && (v=="xml"||v=="password")) ||
+           (k~/^(instance|username|category|form|format|url)$/ && v~/^[A-Za-z0-9._\/:@-]{1,128}$/) ||
+           (k~/^(timeout|connect_timeout)$/ && v~/^[0-9]+$/)
+      if (k=="password") print "password=<set, " length(v) " chars>"
+      else if (ok) print k "=" v
+      else print k "=<REDACTED: unexpected value, check this line>" }' "$CFG"; }
 ```
+
+This prints configuration values only when they match an expected shape. A
+user can easily paste a password onto the wrong line, so anything unexpected
+is redacted rather than shown. Never check the file with `cat` or `grep`.
 
 - If nothing is set, ask the user to set up credentials. They can create the
   config file themselves (mode 0600), or start Claude Code from a shell that
