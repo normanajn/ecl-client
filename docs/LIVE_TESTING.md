@@ -30,7 +30,7 @@ from your location.
    know which tags each instance accepts; an undefined tag may make ECL reject
    the entry.
 4. **Binary.** From the repository root, `build/ecl-post --version` should
-   print `ecl-post 0.1.0`.
+   print `ecl-post 1.0.0`.
 
 ```sh
 cd ~/Git-Repositories/Norman/ecl-client
@@ -75,7 +75,7 @@ Mu2e:
 
 ```sh
 ecl-post -i mu2e -c "$MU2E_CAT" \
-  -s "ecl-client v0.0.2 live test: text ($(date -u +%FT%TZ))" \
+  -s "ecl-client live test: text ($(date -u +%FT%TZ))" \
   -t "Test entry from ecl-client on $(hostname). Safe to ignore."
 ```
 
@@ -83,7 +83,7 @@ NOvA (after switching `ECL_USERNAME` / `ECL_PASSWORD` to the NOvA account):
 
 ```sh
 ecl-post -i nova -c "$NOVA_CAT" \
-  -s "ecl-client v0.0.2 live test: text ($(date -u +%FT%TZ))" \
+  -s "ecl-client live test: text ($(date -u +%FT%TZ))" \
   -t "Test entry from ecl-client on $(hostname). Safe to ignore."
 ```
 

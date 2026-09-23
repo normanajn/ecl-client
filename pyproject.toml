@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "fnal-ecl-client"
-version = "0.1.0"
+version = "1.0.0"
 description = "C, C++, command-line, and Python client for the Fermilab Electronic Logbook"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -12,7 +12,7 @@ license = { text = "BSD-3-Clause" }
 authors = [{ name = "Andrew Norman" }]
 keywords = ["fermilab", "ecl", "logbook"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: BSD License",
     "Programming Language :: C",
     "Programming Language :: C++",

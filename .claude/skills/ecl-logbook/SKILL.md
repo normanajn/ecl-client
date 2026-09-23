@@ -16,7 +16,7 @@ The tools live in the `ecl-client` checkout, normally
 ```sh
 ECL_HOME=${ECL_HOME:-$HOME/Git-Repositories/Norman/ecl-client}
 ECL_POST=${ECL_POST:-$(command -v ecl-post || echo "$ECL_HOME/build/ecl-post")}
-"$ECL_POST" --version          # expect: ecl-post 0.1.0 (or later)
+"$ECL_POST" --version          # expect: ecl-post 1.0.0 (or later)
 ```
 
 If the binary is missing, build it (see `$ECL_HOME/README.md`). On macOS:

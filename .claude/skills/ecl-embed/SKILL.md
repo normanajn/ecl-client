@@ -14,8 +14,8 @@ the Python and C++ fail-soft helpers, and threading notes.
 
 | Host project | Route | Dependency line |
 |---|---|---|
-| CMake C++/C | Library | `FetchContent` `GIT_TAG v0.0.2` (pinned), or `find_package(ecl-client CONFIG REQUIRED)` |
-| Python package or app | Module | `fnal-ecl-client @ git+https://github.com/normanajn/ecl-client.git@v0.0.2` |
+| CMake C++/C | Library | `FetchContent` `GIT_TAG v1.0.0` (pinned), or `find_package(ecl-client CONFIG REQUIRED)` |
+| Python package or app | Module | `fnal-ecl-client @ git+https://github.com/normanajn/ecl-client.git@v1.0.0` |
 | Shell, cron, CI, other languages | CLI | `ecl-post` on PATH; `ecl-track` for procedures |
 
 Match the host project's language (C++ or Python per the user's standards).

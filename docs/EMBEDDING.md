@@ -10,9 +10,9 @@ use the same native implementation.
 | `ecl-post` CLI | Shell scripts, cron, CI, any language with `exec` | Binary on `PATH` |
 | `ecl-track` CLI | Multi-step procedures that need a linked record | `ecl-post` plus Python 3.9 |
 
-Every route below was verified on 2026-09-23 against this tree: a
+Every route below was verified on 2026-09-23 (v1.0.0): a
 `find_package` consumer, a `FetchContent` consumer, and
-`pip install git+...@v0.0.2` in a clean virtual environment.
+`pip install git+...@v1.0.0` in a clean virtual environment.
 
 ## CMake: installed package
 
@@ -40,7 +40,7 @@ set(ECL_BUILD_TESTS OFF CACHE BOOL "" FORCE)   # don't add ecl tests to the host
 set(ECL_BUILD_CLI   OFF CACHE BOOL "" FORCE)   # library only
 FetchContent_Declare(ecl_client
     GIT_REPOSITORY https://github.com/normanajn/ecl-client.git
-    GIT_TAG        v0.0.2)                      # always pin a tag
+    GIT_TAG        v1.0.0)                      # always pin a tag
 FetchContent_MakeAvailable(ecl_client)
 target_link_libraries(my_daemon PRIVATE ECL::ecl)
 ```
@@ -51,14 +51,14 @@ target_link_libraries(my_daemon PRIVATE ECL::ecl)
 
 ```toml
 dependencies = [
-    "fnal-ecl-client @ git+https://github.com/normanajn/ecl-client.git@v0.0.2",
+    "fnal-ecl-client @ git+https://github.com/normanajn/ecl-client.git@v1.0.0",
 ]
 ```
 
 Or in `requirements.txt`:
 
 ```text
-fnal-ecl-client @ git+https://github.com/normanajn/ecl-client.git@v0.0.2
+fnal-ecl-client @ git+https://github.com/normanajn/ecl-client.git@v1.0.0
 ```
 
 This builds the extension from source, so libcurl and OpenSSL headers must be

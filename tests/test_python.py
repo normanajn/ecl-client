@@ -12,10 +12,12 @@ import unittest
 import xml.etree.ElementTree as ET
 
 
+# Prefer the freshly built module on PYTHONPATH (CTest) over any installed copy,
+# so CTest never silently tests a stale ecl_client from site-packages.
 try:
-    ecl = importlib.import_module("ecl_client")
-except ImportError:
     ecl = importlib.import_module("_native")
+except ImportError:
+    ecl = importlib.import_module("ecl_client")
 
 
 class PythonBindingTests(unittest.TestCase):
@@ -38,7 +40,7 @@ class PythonBindingTests(unittest.TestCase):
     def test_helpers(self) -> None:
         self.assertEqual(ecl.instance_url("mu2e"), "https://dbweb0.fnal.gov/ECL/mu2e")
         self.assertEqual(ecl.instance_url("https://example.test/ecl"), "https://example.test/ecl")
-        self.assertEqual(ecl.__version__, "0.1.0")
+        self.assertEqual(ecl.__version__, "1.0.0")
 
 
 if __name__ == "__main__":

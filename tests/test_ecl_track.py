@@ -59,7 +59,10 @@ class EclTrackTest(unittest.TestCase):
     def setUp(self) -> None:
         Handler.posts, Handler.fail = [], False
         self.tmp = tempfile.TemporaryDirectory()
-        self.env = dict(os.environ, ECL_POST=ECL_POST, ECL_TRACK_DIR=self.tmp.name,
+        # Isolate from the developer's real ~/.config/ecl-client/config and ECL_* vars.
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("ECL_")}
+        self.env.update(HOME=self.tmp.name, XDG_CONFIG_HOME=self.tmp.name,
+                        ECL_POST=ECL_POST, ECL_TRACK_DIR=self.tmp.name,
                         ECL_USERNAME="robot", ECL_PASSWORD="secret")
 
     def tearDown(self) -> None:

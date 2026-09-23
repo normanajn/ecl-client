@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(ecl-client VERSION 0.1.0 LANGUAGES C CXX)
+project(ecl-client VERSION 1.0.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -15,7 +15,7 @@ find_package(OpenSSL 1.1.1 REQUIRED COMPONENTS Crypto)
 add_library(ecl src/ecl.cpp)
 add_library(ECL::ecl ALIAS ecl)
 target_compile_features(ecl PUBLIC cxx_std_17)
-target_compile_definitions(ecl PRIVATE ECL_BUILDING_LIBRARY)
+target_compile_definitions(ecl PRIVATE ECL_BUILDING_LIBRARY ECL_VERSION_STRING="${PROJECT_VERSION}")
 target_include_directories(ecl
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

@@ -51,7 +51,7 @@ struct ClientData {
     long timeout = 30;
     long connect_timeout = 10;
     bool tls_verify = true;
-    std::string user_agent = "ecl-client/0.1.0";
+    std::string user_agent = "ecl-client/" ECL_VERSION_STRING;
     std::string last_error;
 
     ~ClientData() {
@@ -344,7 +344,7 @@ struct ecl_client { ClientData data; };
 
 extern "C" {
 
-const char *ecl_version(void) { return "0.1.0"; }
+const char *ecl_version(void) { return ECL_VERSION_STRING; }
 
 const char *ecl_status_string(ecl_status status) {
     switch (status) {

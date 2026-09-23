@@ -87,6 +87,14 @@ def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str
     return subprocess.run(command, text=True, capture_output=True, check=False, **kwargs)
 
 
+def isolated_environment(home: str) -> dict[str, str]:
+    """Environment that cannot see the developer's real ECL config or credentials."""
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("ECL_")}
+    environment["HOME"] = home
+    environment["XDG_CONFIG_HOME"] = home
+    return environment
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: test_mock_server.py ECL_POST_PATH")
@@ -95,7 +103,8 @@ def main() -> int:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     base = f"http://127.0.0.1:{server.server_port}"
-    environment = os.environ.copy()
+    isolated_home = tempfile.TemporaryDirectory()
+    environment = isolated_environment(isolated_home.name)
     environment["ECL_PASSWORD"] = PASSWORD
     try:
         with tempfile.TemporaryDirectory() as directory:
@@ -147,6 +156,7 @@ def main() -> int:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+        isolated_home.cleanup()
     print("mock server tests passed")
     return 0
 

@@ -48,7 +48,7 @@ int main() {
     ecl_free(xml);
     ecl_entry_destroy(c_entry);
 
-    assert(std::string(ecl_version()) == "0.1.0");
+    assert(std::string(ecl_version()) == "1.0.0");
     assert(std::string(ecl_status_string(ECL_HTTP_ERROR)) == "HTTP error");
     assert(ecl::instance_url("mu2e") == "https://dbweb0.fnal.gov/ECL/mu2e");
     assert(ecl::instance_url("https://example.test/ECL/test") == "https://example.test/ECL/test");
