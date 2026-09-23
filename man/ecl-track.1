@@ -1,0 +1,177 @@
+.TH ECL-TRACK 1 "2026-09-23" "ecl-client 0.1.0" "User Commands"
+.SH NAME
+ecl-track \- record the steps of an operation as linked ECL logbook entries
+.SH SYNOPSIS
+.B ecl-track start
+.B \-\-op
+.I ID
+.B \-\-title
+.I TEXT
+.RI [ BODY ]
+.RI [ ECL-POST-OPTIONS ]
+.br
+.B ecl-track step
+.B \-\-op
+.I ID
+.B \-\-name
+.I TEXT
+.RB [ \-\-status " ok|fail|warn|info|skip]"
+.RI [ BODY ]
+.RI [ ECL-POST-OPTIONS ]
+.br
+.B ecl-track end
+.B \-\-op
+.I ID
+.RB [ \-\-status " ok|fail|aborted|partial]"
+.RI [ BODY ]
+.br
+.B ecl-track flush
+.B \-\-op
+.I ID
+.br
+.B ecl-track status
+.B \-\-op
+.I ID
+.RB [ \-\-json ]
+.SH DESCRIPTION
+.B ecl-track
+turns a multi-step operation (an upgrade, a calibration campaign, a
+deployment) into a thread of ECL entries:
+.TP
+.B start
+posts
+.BI "[" ID "] START: " TITLE
+and records its entry ID as the operation's parent. The
+.I ECL-POST-OPTIONS
+given here (instance, category, tags, form, auth) are saved and reused by
+every later call.
+.TP
+.B step
+posts
+.BI "[" ID "] step " N ": " NAME " \-\- " STATUS
+with
+.B related
+set to the parent entry. Extra options (for example
+.BR \-\-attachment )
+apply to this entry only.
+.TP
+.B end
+posts
+.BI "[" ID "] END \-\- " STATUS
+with a generated table of all steps and their entry IDs, and closes the
+operation.
+.TP
+.B flush
+retries queued posts that failed earlier. Steps queued before the parent
+existed are linked to it when flushed.
+.TP
+.B status
+prints the state file.
+.PP
+Each body gets a footer with UTC time, host, user, working directory and
+.B git describe
+output, unless
+.B \-\-no\-context
+is given.
+.SH OPTIONS
+.TP
+.BI \-\-op " ID"
+Operation identifier, 1\(en128 characters of
+.BR [A\-Za\-z0\-9._\-] .
+Use something unique and dated, for example
+.BR daq\-fw\-upgrade\-2026\-09\-23 .
+.TP
+.BI \-\-dir " PATH"
+State directory. Default
+.B $ECL_TRACK_DIR
+or
+.IR ./.ecl\-track .
+.TP
+.BI \-\-ecl\-post " PATH"
+Path to
+.BR ecl-post (1).
+Default
+.BR $ECL_POST ,
+then
+.BR PATH ,
+then
+.I ../build/ecl-post
+relative to this script.
+.TP
+.BR \-t ", " \-\-text " " \fITEXT\fR
+Entry body.
+.TP
+.BR \-T ", " \-\-text\-file " " \fIPATH\fR
+Read the body from
+.IR PATH ;
+.B \-
+reads standard input.
+.TP
+.B \-\-no\-context
+Omit the context footer.
+.TP
+.BR \-n ", " \-\-dry\-run
+Print XML and post nothing. On
+.BR start ,
+marks the whole operation as a dry run so later calls are also dry runs.
+.TP
+.B \-\-strict
+Exit 1 if the post fails (the entry is still queued).
+.TP
+.B \-\-force
+.RB ( start )
+Overwrite an existing state file for
+.IR ID .
+.PP
+.BR \-\-password ", " \-\-subject ", " \-\-text ", " \-\-text\-file " and " \-\-related
+cannot be passed through to
+.BR ecl-post .
+.SH FAILURE HANDLING
+By default a failed post prints a warning, is queued in the state file, and
+.B ecl-track
+exits 0. This is deliberate: an ECL outage must not abort the operation being
+recorded. Check for queued entries with
+.B status
+and send them with
+.BR flush .
+.SH ENVIRONMENT
+.BR ECL_USERNAME ", " ECL_PASSWORD ", " ECL_AUTH ", " ECL_INSTANCE ", " ECL_CATEGORY
+are read by
+.BR ecl-post (1).
+.B ECL_TRACK_DIR
+sets the state directory;
+.B ECL_POST
+sets the ecl-post path.
+.SH EXIT STATUS
+0 success (or failure queued without
+.BR \-\-strict ),
+1 post failed with
+.B \-\-strict
+or entries remain after
+.BR flush ,
+2 usage error.
+.SH FILES
+.TP
+.IB state-dir / ID .json
+Operation state: saved ecl-post options, parent entry ID, entries, queue.
+Contains entry bodies but never passwords.
+.SH EXAMPLES
+.nf
+export ECL_USERNAME=automation-account ECL_AUTH=password
+read \-rs ECL_PASSWORD; export ECL_PASSWORD
+OP=daq\-fw\-upgrade\-$(date +%F)
+
+ecl-track start \-\-op $OP \-\-title 'DTC firmware upgrade to v4.2' \e
+    \-i mu2e \-c Sandbox \-t 'Plan: stop run, flash 6 DTCs, verify.'
+ecl-track step \-\-op $OP \-\-name 'Run stopped' \-t 'Run 105123 ended.'
+flash_all.sh 2>&1 | tee flash.log
+ecl-track step \-\-op $OP \-\-name 'Flash DTCs' \-\-status ok \e
+    \-\-attachment flash.log=flash.log \-t 'All 6 DTCs report v4.2.'
+ecl-track end \-\-op $OP \-\-status ok
+.fi
+.SH SEE ALSO
+.BR ecl-post (1),
+.BR ecl (3),
+.BR ecl_client (3)
+.SH AUTHOR
+Andrew Norman <anorman@fnal.gov>

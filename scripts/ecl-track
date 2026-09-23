@@ -1,0 +1,338 @@
+#!/usr/bin/env python3
+"""Record the steps of a multi-step operation as linked ECL logbook entries.
+
+An operation is opened with ``start`` (one ECL entry), each step is posted
+with ``step`` as an entry related to the start entry, and ``end`` posts a
+summary.  State lives in ``<state-dir>/<op>.json`` so that separate shell
+invocations, scripts, or sessions can add to the same operation.
+
+Posting is delegated to ``ecl-post``; credentials come from ECL_USERNAME /
+ECL_PASSWORD or the ecl-post configuration file, never from this program's
+command line.  By default a failed post is queued in the state file and the
+program exits 0, so a logbook outage does not break the operation being
+logged; ``--strict`` makes failures fatal and ``flush`` retries the queue.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as _dt
+import getpass
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+VERSION = "0.1.0"
+EXIT_OK = 0
+EXIT_POST_FAILED = 1
+EXIT_USAGE = 2
+CREATED = re.compile(r"Created ECL entry (\d+)")
+SAFE_OP = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def utc_now() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def find_ecl_post(explicit: Optional[str]) -> str:
+    candidates = [explicit, os.environ.get("ECL_POST"), shutil.which("ecl-post")]
+    here = Path(__file__).resolve().parent
+    candidates.append(str(here.parent / "build" / "ecl-post"))
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise SystemExit("ecl-track: cannot find ecl-post; use --ecl-post or set ECL_POST")
+
+
+def state_dir(explicit: Optional[str]) -> Path:
+    return Path(explicit or os.environ.get("ECL_TRACK_DIR") or ".ecl-track")
+
+
+def state_path(directory: Path, op: str) -> Path:
+    return directory / f"{op}.json"
+
+
+def load_state(path: Path) -> Dict[str, Any]:
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def save_state(path: Path, state: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(state, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    os.replace(tmp, path)
+
+
+def git_describe() -> Optional[str]:
+    try:
+        out = subprocess.run(
+            ["git", "describe", "--always", "--dirty", "--tags"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() or None
+
+
+def context_block() -> str:
+    lines = [
+        "--",
+        f"time:  {utc_now()}",
+        f"host:  {socket.getfqdn()}",
+        f"user:  {getpass.getuser()}",
+        f"cwd:   {os.getcwd()}",
+    ]
+    rev = git_describe()
+    if rev:
+        lines.append(f"git:   {rev}")
+    return "\n".join(lines)
+
+
+def read_body(args: argparse.Namespace) -> str:
+    if args.text is not None and args.text_file is not None:
+        raise SystemExit("ecl-track: use only one of --text and --text-file")
+    if args.text_file == "-":
+        body = sys.stdin.read()
+    elif args.text_file is not None:
+        body = Path(args.text_file).read_text(encoding="utf-8")
+    else:
+        body = args.text or ""
+    if not args.no_context:
+        body = (body.rstrip("\n") + "\n\n" if body else "") + context_block()
+    return body
+
+
+def post(ecl_post: str, argv: List[str], body: str) -> Dict[str, Any]:
+    """Run ecl-post with the body on stdin; return entry id or error text."""
+    command = [ecl_post, *argv, "--text-file", "-"]
+    try:
+        proc = subprocess.run(command, input=body, capture_output=True, text=True, check=False)
+    except OSError as error:
+        return {"entry_id": None, "error": str(error)}
+    match = CREATED.search(proc.stdout)
+    if proc.returncode == 0 and match:
+        return {"entry_id": int(match.group(1)), "error": None, "stdout": proc.stdout}
+    if proc.returncode == 0 and "--dry-run" in argv:
+        return {"entry_id": None, "error": None, "stdout": proc.stdout}
+    message = (proc.stderr or proc.stdout).strip() or f"ecl-post exited {proc.returncode}"
+    return {"entry_id": None, "error": message}
+
+
+def base_argv(state: Dict[str, Any], args: argparse.Namespace, passthrough: List[str]) -> List[str]:
+    argv = list(state.get("post_args", []))
+    argv.extend(passthrough)
+    if args.dry_run:
+        argv.append("--dry-run")
+    return argv
+
+
+def record(state: Dict[str, Any], kind: str, subject: str, argv: List[str], body: str,
+           result: Dict[str, Any], args: argparse.Namespace, extra: Dict[str, Any]) -> int:
+    item = {"kind": kind, "subject": subject, "time": utc_now(),
+            "entry_id": result["entry_id"], **extra}
+    state.setdefault("entries", []).append(item)
+    if args.dry_run:
+        sys.stdout.write(result.get("stdout", ""))
+        return EXIT_OK
+    if result["error"] is None:
+        print(f"{kind}: ECL entry {result['entry_id']}  {subject}")
+        return EXIT_OK
+    item["error"] = result["error"]
+    state.setdefault("pending", []).append(
+        {"index": len(state["entries"]) - 1, "argv": argv, "body": body})
+    print(f"ecl-track: WARNING: {kind} not posted ({result['error']}); queued, "
+          f"retry with: ecl-track flush --op {state['op']}", file=sys.stderr)
+    return EXIT_POST_FAILED if args.strict else EXIT_OK
+
+
+def cmd_start(args: argparse.Namespace, passthrough: List[str]) -> int:
+    path = state_path(args.dir, args.op)
+    if path.exists() and not args.force:
+        raise SystemExit(f"ecl-track: operation '{args.op}' already exists at {path}; "
+                         "use a new --op or --force")
+    state: Dict[str, Any] = {
+        "op": args.op, "title": args.title, "started": utc_now(),
+        "post_args": passthrough, "parent_id": None, "step_count": 0,
+        "entries": [], "pending": [], "closed": False, "dry_run": args.dry_run,
+    }
+    subject = f"[{args.op}] START: {args.title}"
+    argv = [*passthrough, "--subject", subject] + (["--dry-run"] if args.dry_run else [])
+    body = read_body(args)
+    result = post(args.ecl_post, argv, body)
+    state["parent_id"] = result["entry_id"]
+    rc = record(state, "start", subject, argv, body, result, args, {})
+    save_state(path, state)
+    return rc
+
+
+def open_state(args: argparse.Namespace) -> Dict[str, Any]:
+    path = state_path(args.dir, args.op)
+    if not path.exists():
+        raise SystemExit(f"ecl-track: no operation '{args.op}' in {args.dir}; run 'start' first")
+    state = load_state(path)
+    if state.get("dry_run"):
+        args.dry_run = True
+    return state
+
+
+def related_argv(state: Dict[str, Any]) -> List[str]:
+    return ["--related", str(state["parent_id"])] if state.get("parent_id") else []
+
+
+def cmd_step(args: argparse.Namespace, passthrough: List[str]) -> int:
+    state = open_state(args)
+    if state.get("closed"):
+        raise SystemExit(f"ecl-track: operation '{args.op}' has already ended")
+    number = state["step_count"] + 1
+    subject = f"[{args.op}] step {number}: {args.name} -- {args.status.upper()}"
+    argv = base_argv(state, args, passthrough) + ["--subject", subject] + related_argv(state)
+    body = read_body(args)
+    rc = record(state, "step", subject, argv, body, post(args.ecl_post, argv, body), args,
+                {"step": number, "status": args.status})
+    state["step_count"] = number
+    save_state(state_path(args.dir, args.op), state)
+    return rc
+
+
+def cmd_end(args: argparse.Namespace, passthrough: List[str]) -> int:
+    state = open_state(args)
+    steps = [e for e in state["entries"] if e["kind"] == "step"]
+    lines = [f"Operation {args.op}: {state.get('title', '')}",
+             f"Started {state['started']}, ended {utc_now()}, status {args.status.upper()}",
+             "", "Steps:"]
+    for entry in steps:
+        ref = f"entry {entry['entry_id']}" if entry.get("entry_id") else "NOT POSTED"
+        lines.append(f"  {entry['step']:>3}. {entry['status'].upper():<5} {entry['subject']}  ({ref})")
+    if not steps:
+        lines.append("  (none)")
+    summary = "\n".join(lines)
+    user_body = read_body(args)
+    body = summary + ("\n\n" + user_body if user_body else "")
+    subject = f"[{args.op}] END -- {args.status.upper()}"
+    argv = base_argv(state, args, passthrough) + ["--subject", subject] + related_argv(state)
+    rc = record(state, "end", subject, argv, body, post(args.ecl_post, argv, body), args,
+                {"status": args.status})
+    state["closed"] = True
+    save_state(state_path(args.dir, args.op), state)
+    return rc
+
+
+def cmd_flush(args: argparse.Namespace, _passthrough: List[str]) -> int:
+    state = open_state(args)
+    if state.get("dry_run"):
+        print("ecl-track: dry-run operation; nothing to flush")
+        return EXIT_OK
+    remaining = []
+    for item in state.get("pending", []):
+        argv = list(item["argv"])
+        entry = state["entries"][item["index"]]
+        if entry["kind"] != "start" and state.get("parent_id") and "--related" not in argv:
+            argv += ["--related", str(state["parent_id"])]
+        result = post(args.ecl_post, argv, item["body"])
+        if result["error"] is None:
+            entry["entry_id"] = result["entry_id"]
+            entry.pop("error", None)
+            if entry["kind"] == "start":
+                state["parent_id"] = result["entry_id"]
+            print(f"flushed: ECL entry {result['entry_id']}  {entry['subject']}")
+        else:
+            entry["error"] = result["error"]
+            remaining.append(item)
+            print(f"ecl-track: still failing: {entry['subject']}: {result['error']}", file=sys.stderr)
+    state["pending"] = remaining
+    save_state(state_path(args.dir, args.op), state)
+    return EXIT_POST_FAILED if remaining else EXIT_OK
+
+
+def cmd_status(args: argparse.Namespace, _passthrough: List[str]) -> int:
+    state = open_state(args)
+    if args.json:
+        json.dump(state, sys.stdout, indent=2, sort_keys=True)
+        print()
+        return EXIT_OK
+    mode = "closed" if state.get("closed") else "open"
+    if state.get("dry_run"):
+        mode += ", dry run"
+    print(f"op:       {state['op']}  ({mode})")
+    print(f"title:    {state.get('title')}")
+    print(f"started:  {state['started']}")
+    print(f"parent:   {state.get('parent_id')}")
+    print(f"post args: {' '.join(state.get('post_args', []))}")
+    for entry in state["entries"]:
+        ref = entry.get("entry_id") or "PENDING"
+        print(f"  {entry['time']}  {str(ref):>8}  {entry['subject']}")
+    print(f"pending:  {len(state.get('pending', []))}")
+    return EXIT_OK
+
+
+def build_parser() -> argparse.ArgumentParser:
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--op", required=True, help="operation identifier, e.g. daq-upgrade-2026-09-23")
+    common.add_argument("--dir", type=Path, default=None,
+                        help="state directory (default: $ECL_TRACK_DIR or ./.ecl-track)")
+    common.add_argument("--ecl-post", default=None, help="path to ecl-post (default: $ECL_POST, PATH)")
+    body = argparse.ArgumentParser(add_help=False)
+    body.add_argument("-t", "--text", default=None, help="entry body")
+    body.add_argument("-T", "--text-file", default=None, help="read body from file; - for stdin")
+    body.add_argument("--no-context", action="store_true",
+                      help="omit the time/host/user/cwd/git footer")
+    body.add_argument("-n", "--dry-run", action="store_true",
+                      help="print XML and post nothing; on start, makes the whole operation a dry run")
+    body.add_argument("--strict", action="store_true", help="exit 1 if the post fails")
+
+    parser = argparse.ArgumentParser(
+        prog="ecl-track",
+        description="Record operation steps as linked ECL entries. Unrecognised options "
+                    "(e.g. --instance, --category, --tag, --attachment) are passed to ecl-post.")
+    parser.add_argument("--version", action="version", version=f"ecl-track {VERSION}")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("start", parents=[common, body], help="open an operation")
+    p.add_argument("--title", required=True, help="one-line description of the operation")
+    p.add_argument("--force", action="store_true", help="overwrite an existing state file")
+    p.set_defaults(func=cmd_start)
+
+    p = sub.add_parser("step", parents=[common, body], help="post one step")
+    p.add_argument("--name", required=True, help="short step description")
+    p.add_argument("--status", default="ok", choices=["ok", "fail", "warn", "info", "skip"])
+    p.set_defaults(func=cmd_step)
+
+    p = sub.add_parser("end", parents=[common, body], help="post the summary and close")
+    p.add_argument("--status", default="ok", choices=["ok", "fail", "aborted", "partial"])
+    p.set_defaults(func=cmd_end)
+
+    p = sub.add_parser("flush", parents=[common], help="retry queued posts")
+    p.set_defaults(func=cmd_flush)
+
+    p = sub.add_parser("status", parents=[common], help="show operation state")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_status)
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = build_parser()
+    args, passthrough = parser.parse_known_args(argv)
+    if not SAFE_OP.match(args.op):
+        parser.error("--op must be 1-128 characters of [A-Za-z0-9._-], starting alphanumeric")
+    for forbidden in ("--password", "--subject", "-s", "--text-file", "-T", "--text", "-t", "--related"):
+        if any(a == forbidden or a.startswith(forbidden + "=") for a in passthrough):
+            parser.error(f"{forbidden} is managed by ecl-track and cannot be passed through")
+    args.dir = state_dir(str(args.dir) if args.dir else None)
+    if args.command in ("start", "step", "end", "flush"):
+        args.ecl_post = find_ecl_post(args.ecl_post)
+    return args.func(args, passthrough)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

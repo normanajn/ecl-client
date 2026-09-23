@@ -60,6 +60,12 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
+On macOS with Homebrew add `-DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"`
+to the first command (see README.md).
+
+The same commands work for any instance; for NOvA replace `--instance mu2e`
+with `--instance nova` and use a category that exists in the NOvA logbook.
+
 ### Simple text entry
 
 ```sh

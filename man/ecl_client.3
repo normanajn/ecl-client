@@ -1,0 +1,106 @@
+.TH ECL_CLIENT 3 "2026-09-23" "ecl-client 0.1.0" "Python Library Manual"
+.SH NAME
+ecl_client \- Python interface to the Fermilab Electronic Logbook client
+.SH SYNOPSIS
+.nf
+.B import ecl_client as ecl
+.PP
+.BI "entry = ecl.Entry(" category )
+.BI "client = ecl.Client(" url ", " username ", " password ", " auth_mode "=ecl.AuthMode.XML_SIGNATURE)"
+.BI "result = client.post(" entry )
+.fi
+.SH DESCRIPTION
+.B ecl_client
+is a pybind11 extension over the C++ library documented in
+.BR ecl (3).
+It is distributed as the
+.B fnal-ecl-client
+package and requires Python 3.9 or newer.
+.SS Enumerations
+.TP
+.B AuthMode
+.BR XML_SIGNATURE ", " PASSWORD .
+.TP
+.B TextFormat
+.BR PLAIN ", " TEXTILE ", " PREFORMATTED .
+.SS Entry(category)
+All methods except
+.B xml
+return the entry, so calls can be chained.
+.TP
+.BI subject( value ") , text(" value ") , form(" value )
+.TP
+.BI format( TextFormat )
+.TP
+.BI private_entry( value =True)
+.TP
+.BI related( entry_id )
+.TP
+.BI tag( value )
+.TP
+.BI field( name ", " value )
+.TP
+.BI attachment( name ", " path ") , image(" name ", " path )
+Read the file when called.
+.TP
+.BI attachment_data( name ", " filename ", " data ") , image_data(" name ", " filename ", " data )
+.I data
+is a bytes-like object.
+.TP
+.B xml()
+Serialised XML; also returned by
+.BR str() .
+.SS Client(url, username, password, auth_mode)
+.TP
+.BI timeout( seconds ") , connect_timeout(" seconds )
+.TP
+.BI tls_verify( enabled ") , user_agent(" value )
+.TP
+.BI post( entry )
+Returns a
+.BR PostResult .
+The GIL is released for the network operation, so posts from several threads
+proceed concurrently, provided each thread uses its own
+.BR Client .
+.SS PostResult
+Read-only attributes
+.BR http_status ", " entry_id ", " response_body ", " effective_url ,
+and property
+.BR created .
+.SS instance_url(name)
+Returns
+.BI https://dbweb0.fnal.gov/ECL/ name\fR,
+or
+.I name
+unchanged if it contains
+.BR :// .
+.SH ERRORS
+Library failures raise
+.BR ecl_client.ECLError ,
+a subclass of
+.BR Exception .
+Invalid argument values raise
+.B ECLError
+from the setter that received them.
+.SH EXAMPLES
+.nf
+import os
+import ecl_client as ecl
+
+entry = (ecl.Entry("Sandbox")
+         .subject("Python post")
+         .text("Automated entry")
+         .tag("automated")
+         .attachment("report", "report.txt"))
+client = ecl.Client(ecl.instance_url("mu2e"),
+                    os.environ["ECL_USERNAME"],
+                    os.environ["ECL_PASSWORD"],
+                    ecl.AuthMode.PASSWORD)
+r = client.post(entry)
+print(r.entry_id, r.effective_url)
+.fi
+.SH SEE ALSO
+.BR ecl-post (1),
+.BR ecl (3)
+.SH AUTHOR
+Andrew Norman <anorman@fnal.gov>

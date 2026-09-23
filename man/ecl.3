@@ -1,0 +1,210 @@
+.TH ECL 3 "2026-09-23" "ecl-client 0.1.0" "Library Functions Manual"
+.SH NAME
+ecl \- C and C++ client library for the Fermilab Electronic Logbook
+.SH SYNOPSIS
+.nf
+.B #include <ecl/ecl.h>
+.PP
+.BI "ecl_entry *ecl_entry_create(const char *" category );
+.BI "void ecl_entry_destroy(ecl_entry *" entry );
+.BI "ecl_status ecl_entry_set_subject(ecl_entry *" e ", const char *" subject );
+.BI "ecl_status ecl_entry_set_text(ecl_entry *" e ", const char *" text );
+.BI "ecl_status ecl_entry_set_form(ecl_entry *" e ", const char *" form_name );
+.BI "ecl_status ecl_entry_set_format(ecl_entry *" e ", ecl_text_format " format );
+.BI "ecl_status ecl_entry_set_private(ecl_entry *" e ", int " is_private );
+.BI "ecl_status ecl_entry_set_related(ecl_entry *" e ", int64_t " entry_id );
+.BI "ecl_status ecl_entry_add_tag(ecl_entry *" e ", const char *" tag );
+.BI "ecl_status ecl_entry_add_field(ecl_entry *" e ", const char *" name ", const char *" value );
+.BI "ecl_status ecl_entry_add_attachment(ecl_entry *" e ", const char *" name ,
+.BI "                                    const char *" filename ", const void *" data ", size_t " size );
+.BI "ecl_status ecl_entry_add_attachment_file(ecl_entry *" e ", const char *" name ", const char *" path );
+.BI "ecl_status ecl_entry_add_image(ecl_entry *" e ", const char *" name ,
+.BI "                               const char *" filename ", const void *" data ", size_t " size );
+.BI "ecl_status ecl_entry_add_image_file(ecl_entry *" e ", const char *" name ", const char *" path );
+.BI "ecl_status ecl_entry_to_xml(const ecl_entry *" e ", char **" xml ", size_t *" size );
+.PP
+.BI "ecl_client *ecl_client_create(const char *" instance_url ", const char *" username ,
+.BI "                              const char *" password ", ecl_auth_mode " mode );
+.BI "void ecl_client_destroy(ecl_client *" client );
+.BI "ecl_status ecl_client_set_timeout(ecl_client *" c ", long " seconds );
+.BI "ecl_status ecl_client_set_connect_timeout(ecl_client *" c ", long " seconds );
+.BI "ecl_status ecl_client_set_tls_verify(ecl_client *" c ", int " enabled );
+.BI "ecl_status ecl_client_set_user_agent(ecl_client *" c ", const char *" user_agent );
+.BI "ecl_status ecl_client_post(ecl_client *" c ", const ecl_entry *" e ", ecl_post_result *" result );
+.BI "const char *ecl_client_last_error(const ecl_client *" c );
+.BI "void ecl_post_result_free(ecl_post_result *" result );
+.PP
+.B "const char *ecl_version(void);"
+.BI "const char *ecl_status_string(ecl_status " status );
+.BI "void ecl_free(void *" memory );
+.PP
+.B #include <ecl/ecl.hpp>
+.PP
+.B namespace ecl {
+.B "  class Entry;  class Client;  struct PostResult;  class Error;"
+.B "  enum class AuthMode { XmlSignature, Password };"
+.B "  enum class TextFormat { Plain, Textile, Preformatted };"
+.BI "  std::string instance_url(const std::string &" name );
+.B }
+.fi
+.PP
+Link with
+.BR \-lecl ,
+or from CMake:
+.PP
+.RS
+.nf
+find_package(ecl-client CONFIG REQUIRED)
+target_link_libraries(app PRIVATE ECL::ecl)
+.fi
+.RE
+.SH DESCRIPTION
+The library builds ECL 8.x XML entries and posts them to
+.IB instance_url /E/xml_post\fR.
+The C++ header is a header-only RAII wrapper over the C API; both share one
+implementation.
+.SS Entries
+.BR ecl_entry_create ()
+allocates an entry in
+.IR category ,
+a slash-separated, case-sensitive category path.
+Setters replace a value; the
+.B add
+functions append. Attachments and images may be supplied as a file path
+(read at add time) or as an in-memory buffer, which is copied.
+.BR ecl_entry_to_xml ()
+returns the serialised XML in a buffer released with
+.BR ecl_free ().
+.SS Clients
+.BR ecl_client_create ()
+returns NULL if any argument is NULL or empty. Trailing slashes on
+.I instance_url
+are removed.
+.I mode
+is one of:
+.TP
+.B ECL_AUTH_XML_SIGNATURE
+Requires an ECL XML/API account. Each request carries the username and an
+MD5 digest of query string, raw password and exact body. MD5 is dictated by
+the ECL protocol. HTTP URLs are allowed for local test servers.
+.TP
+.B ECL_AUTH_PASSWORD
+Sends username and password in headers. Only HTTPS URLs and HTTPS redirects
+are permitted.
+.PP
+Defaults: timeout 30 s, connect timeout 10 s, TLS verification on.
+.PP
+.BR ecl_client_post ()
+fills
+.IR result ,
+whose strings are owned by the result and freed by
+.BR ecl_post_result_free ().
+It follows at most five redirects, retaining POST and the body, and accepts
+cross-host redirects only when both hosts are under
+.IR fnal.gov .
+On failure,
+.BR ecl_client_last_error ()
+returns a message valid until the next call on that client.
+.SS Result
+.nf
+typedef struct ecl_post_result {
+    long     http_status;
+    int64_t  entry_id;       /* -1 if absent from the response */
+    char    *response_body;
+    char    *effective_url;  /* URL after redirects */
+} ecl_post_result;
+.fi
+.SS C++ interface
+.B ecl::Entry
+and
+.B ecl::Client
+are move-only. Setters return
+.B *this
+for chaining. Any non-OK status throws
+.BR ecl::Error ,
+whose
+.BR status ()
+returns the
+.BR ecl_status .
+.BR ecl::instance_url ( name )
+returns
+.BI https://dbweb0.fnal.gov/ECL/ name
+unless
+.I name
+already contains
+.BR :// .
+.BR PostResult::created ()
+is true for a 2xx status with a non-negative entry ID.
+.SH RETURN VALUE
+.TP
+.B ECL_OK
+Success.
+.TP
+.B ECL_INVALID_ARGUMENT
+NULL, empty or out-of-range argument.
+.TP
+.B ECL_IO_ERROR
+Attachment file could not be read, or a transport failure (DNS, connect,
+TLS, timeout, or a URL scheme not permitted for the authentication mode).
+.TP
+.B ECL_HTTP_ERROR
+Non-2xx final response from ECL (for example an authentication failure or an
+unknown category).
+.TP
+.B ECL_PROTOCOL_ERROR
+Response body other than
+.BI "Created " N\fR,
+a redirect without a Location header, more than five redirects, or a
+redirect refused by the host policy.
+.TP
+.B ECL_OUT_OF_MEMORY
+Allocation failure.
+.TP
+.B ECL_INTERNAL_ERROR
+Unexpected library failure.
+.SH THREAD SAFETY
+Distinct objects may be used concurrently. A single
+.B ecl_client
+or
+.B ecl_entry
+must not be used from several threads at once.
+.SH EXAMPLES
+.nf
+#include <ecl/ecl.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void) {
+    const char *pw = getenv("ECL_PASSWORD");
+    ecl_entry *e = ecl_entry_create("Sandbox");
+    ecl_entry_set_subject(e, "C post");
+    ecl_entry_set_text(e, "Entry body");
+    ecl_entry_add_tag(e, "automated");
+
+    ecl_client *c = ecl_client_create("https://dbweb0.fnal.gov/ECL/mu2e",
+                                      "api-user", pw, ECL_AUTH_XML_SIGNATURE);
+    ecl_post_result r = {0};
+    if (ecl_client_post(c, e, &r) == ECL_OK)
+        printf("Created entry %lld\en", (long long)r.entry_id);
+    else
+        fprintf(stderr, "%s\en", ecl_client_last_error(c));
+    ecl_post_result_free(&r);
+    ecl_client_destroy(c);
+    ecl_entry_destroy(e);
+    return 0;
+}
+.fi
+.PP
+C++:
+.PP
+.nf
+ecl::Entry entry("Sandbox");
+entry.subject("C++ post").text("Beam state is stable").tag("automated");
+ecl::Client client(ecl::instance_url("nova"), "api-user", password);
+ecl::PostResult r = client.post(entry);
+.fi
+.SH SEE ALSO
+.BR ecl-post (1),
+.BR ecl_client (3)
+.SH AUTHOR
+Andrew Norman <anorman@fnal.gov>

@@ -1,0 +1,246 @@
+.TH ECL-POST 1 "2026-09-23" "ecl-client 0.1.0" "User Commands"
+.SH NAME
+ecl-post \- post an entry to a Fermilab Electronic Logbook (ECL)
+.SH SYNOPSIS
+.B ecl-post
+.RB [ \-i
+.IR NAME " | " \-U " " URL ]
+.RB [ \-u
+.IR USER ]
+.B \-c
+.I CATEGORY
+.RI [ OPTIONS ]
+.br
+.B ecl-post \-\-dry-run \-c
+.I CATEGORY
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B ecl-post
+builds an ECL 8.x XML entry and submits it with
+.PP
+.RS
+.B POST
+.IB instance /E/xml_post?salt= random
+.RE
+.PP
+Entries may carry a subject, body text, category path, tags, form fields,
+file attachments, image attachments, a related entry and a private flag.
+On success the new entry ID and the final endpoint URL are printed on
+standard output.
+.PP
+Fermilab instance URLs answer with a 303 redirect to an active backend.
+.B ecl-post
+keeps the POST method and the exact signed body across up to five
+redirects, recomputing the signature when the query string changes.
+Cross-host redirects are accepted only between hosts under
+.IR fnal.gov .
+.SH OPTIONS
+.SS Connection and authentication
+.TP
+.BR \-i ", " \-\-instance " " \fINAME\fR
+ECL instance alias. Expands to
+.BI https://dbweb0.fnal.gov/ECL/ NAME\fR.
+Aliases are lower case, for example
+.BR mu2e ,
+.BR nova ,
+.BR demo .
+A value containing
+.B ://
+is used verbatim.
+.TP
+.BR \-U ", " \-\-url " " \fIURL\fR
+Full instance URL. Takes precedence over
+.BR \-\-instance .
+.TP
+.BR \-u ", " \-\-username " " \fIUSER\fR
+ECL account name.
+.TP
+.BR \-\-auth " " xml | password
+.B xml
+(default) sends the username and an MD5 digest of the query string, raw API
+password and XML body in ECL headers; the password is never transmitted.
+Requires an ECL XML/API account.
+.B password
+sends username and password in ECL headers and is permitted only over HTTPS.
+.TP
+.BI \-\-config " PATH"
+Read configuration from
+.I PATH
+instead of the default. An explicitly named file must exist.
+.TP
+.BI \-\-timeout " SECONDS"
+Overall request timeout (default 30).
+.TP
+.BI \-\-connect\-timeout " SECONDS"
+Connection timeout (default 10).
+.TP
+.B \-\-insecure
+Disable TLS certificate and hostname verification. Diagnostics only.
+.SS Entry content
+.TP
+.BR \-c ", " \-\-category " " \fIPATH\fR
+Category path, for example
+.BR Operations/DAQ .
+Required. Paths are case sensitive and specific to each instance.
+.TP
+.BR \-s ", " \-\-subject " " \fITEXT\fR
+Entry subject.
+.TP
+.BR \-t ", " \-\-text " " \fITEXT\fR
+Entry body.
+.TP
+.BR \-T ", " \-\-text\-file " " \fIPATH\fR
+Read the body from
+.IR PATH ;
+.B \-
+reads standard input. Mutually exclusive with
+.BR \-\-text .
+.TP
+.BR \-f ", " \-\-form " " \fINAME\fR
+Form name (default
+.BR default ).
+.TP
+.BR \-\-format " " plain | textile | preformatted
+Body markup (default
+.BR plain ).
+.TP
+.BI \-\-tag " TAG"
+Add a tag. Repeatable.
+.TP
+.BI \-\-field " NAME" = VALUE
+Set a form field. Repeatable.
+.TP
+.BR \-\-attachment " [" \fINAME\fR = "]" \fIPATH\fR
+Attach a file. Without
+.IR NAME ,
+the file's basename is used. Repeatable.
+.TP
+.BR \-\-image " [" \fINAME\fR = "]" \fIPATH\fR
+Attach an image. Repeatable.
+.TP
+.BI \-\-related " ID"
+Link the entry to existing entry
+.IR ID .
+.TP
+.B \-\-private
+Mark the entry private.
+.SS Miscellaneous
+.TP
+.BR \-n ", " \-\-dry\-run
+Print the generated XML and exit. No credentials, URL or network access are
+needed.
+.TP
+.BR \-h ", " \-\-help
+Print usage and exit.
+.TP
+.B \-\-version
+Print the library version and exit.
+.PP
+There is intentionally no password option; command-line arguments are visible
+in process listings and shell history.
+.SH CONFIGURATION
+Precedence, highest first: command-line options, environment variables,
+configuration file, built-in defaults.
+.PP
+The default file is
+.IR $XDG_CONFIG_HOME/ecl-client/config ,
+or
+.I ~/.config/ecl-client/config
+when
+.B XDG_CONFIG_HOME
+is unset. It contains
+.IB key = value
+lines; blank lines and lines starting with
+.B #
+are ignored. Recognised keys:
+.BR url ", " instance ", " username ", " password ", " auth ", "
+.BR category ", " form ", " format ", " timeout ", " connect_timeout .
+.PP
+A file containing
+.B password
+must not be readable or writable by group or others (mode 0600), otherwise
+.B ecl-post
+refuses to run.
+.PP
+If no password is found,
+.B ecl-post
+prompts on
+.I /dev/tty
+with echo disabled.
+.SH ENVIRONMENT
+.TP
+.B ECL_URL
+Instance URL.
+.TP
+.B ECL_INSTANCE
+Instance alias.
+.TP
+.B ECL_USERNAME
+Account name.
+.TP
+.B ECL_PASSWORD
+Account or API password.
+.TP
+.B ECL_AUTH
+.BR xml " or " password .
+.TP
+.B ECL_CATEGORY
+Default category path.
+.TP
+.B ECL_FORM
+Default form name.
+.TP
+.B XDG_CONFIG_HOME
+Base directory for the default configuration file.
+.SH EXIT STATUS
+.TP
+.B 0
+Entry created, or dry run / help / version completed.
+.TP
+.B 1
+Library error: HTTP failure, protocol error, I/O error while reading an
+attachment, or rejected redirect.
+.TP
+.B 2
+Usage or configuration error.
+.SH EXAMPLES
+Inspect the XML without contacting ECL:
+.PP
+.RS
+.nf
+ecl-post \-n \-c Sandbox \-s 'Test' \-t 'Hello' \-\-tag test
+.fi
+.RE
+.PP
+Post to the Mu2e logbook with an attachment:
+.PP
+.RS
+.nf
+export ECL_USERNAME=automation-account
+read \-rs ECL_PASSWORD; export ECL_PASSWORD
+ecl-post \-i mu2e \-c Sandbox \-s 'Automated status' \e
+    \-T status.txt \-\-tag automated \-\-attachment report=report.json
+.fi
+.RE
+.PP
+Post a generated report from standard input to NOvA with password
+authentication:
+.PP
+.RS
+.nf
+generate-report | ecl-post \-i nova \-\-auth password \e
+    \-c Sandbox \-s 'Generated report' \-T \-
+.fi
+.RE
+.SH FILES
+.TP
+.I ~/.config/ecl-client/config
+Default configuration file.
+.SH SEE ALSO
+.BR ecl (3),
+.BR ecl_client (3)
+.PP
+Fermilab ECL instance directory:
+.I https://dbweb0.fnal.gov/redirector/ecl_instances.html
+.SH AUTHOR
+Andrew Norman <anorman@fnal.gov>

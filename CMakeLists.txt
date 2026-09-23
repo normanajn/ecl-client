@@ -62,6 +62,11 @@ if(ECL_BUILD_TESTS)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mock_server.py
                     $<TARGET_FILE:ecl-post>
         )
+        add_test(
+            NAME ecl-track-tests
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ecl_track.py
+                    $<TARGET_FILE:ecl-post>
+        )
     endif()
 
     if(ECL_BUILD_PYTHON)
@@ -87,6 +92,11 @@ if(ECL_BUILD_CLI)
     install(TARGETS ecl-post RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(FILES man/ecl.3 man/ecl_client.3 DESTINATION ${CMAKE_INSTALL_MANDIR}/man3)
+if(ECL_BUILD_CLI)
+    install(PROGRAMS scripts/ecl-track DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES man/ecl-post.1 man/ecl-track.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+endif()
 
 write_basic_package_version_file(
     ${CMAKE_CURRENT_BINARY_DIR}/ecl-client-config-version.cmake

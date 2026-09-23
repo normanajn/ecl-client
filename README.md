@@ -37,17 +37,68 @@ cmake --install build --prefix /desired/prefix
 
 To build a shared library, add `-DBUILD_SHARED_LIBS=ON`.
 
+CMake options:
+
+| Option | Default | Effect |
+|---|---|---|
+| `ECL_BUILD_CLI` | `ON` | Build and install `ecl-post` and its man page |
+| `ECL_BUILD_PYTHON` | `OFF` | Build the `_native` pybind11 module and its CTest |
+| `ECL_BUILD_TESTS` | `ON` | Build the C++, C, mock-server and (if enabled) Python tests |
+
+### macOS (Homebrew)
+
+Homebrew's OpenSSL is keg-only, so pass its prefix. Use the stable `opt`
+prefix (`brew --prefix openssl@3`), not a versioned `Cellar` path: a cached
+Cellar path breaks the build tree as soon as `brew upgrade` replaces that
+OpenSSL version. If that has already happened, reconfigure with `--fresh`.
+
+```sh
+cmake -S . -B build --fresh -DCMAKE_BUILD_TYPE=Release \
+      -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+```
+
+### Building the Python module with CMake
+
+`ECL_BUILD_PYTHON=ON` needs pybind11 visible to CMake. Point it at the
+virtual environment that will run the tests:
+
+```sh
+.venv/bin/pip install pybind11 scikit-build-core
+cmake -S . -B build --fresh -DCMAKE_BUILD_TYPE=Release \
+      -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)" \
+      -DECL_BUILD_PYTHON=ON \
+      -DPython3_EXECUTABLE="$PWD/.venv/bin/python" \
+      -Dpybind11_DIR="$(.venv/bin/python -c 'import pybind11; print(pybind11.get_cmake_dir())')"
+cmake --build build -j
+ctest --test-dir build --output-on-failure    # 4 tests
+```
+
+### Python package
+
 Install the Python package in an isolated environment with:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install .
+.venv/bin/pip install .            # or: pip install -e . for development
 .venv/bin/python -c 'import ecl_client; print(ecl_client.__version__)'
+.venv/bin/python tests/test_python.py
 ```
 
 The Python build downloads its declared build dependencies if they are not
 already available. It still requires system libcurl and OpenSSL development
-files.
+files; on macOS export `OPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"` first.
+
+### Man pages
+
+`cmake --install` installs `ecl-post(1)`, `ecl(3)` (C/C++ API) and
+`ecl_client(3)` (Python API) under `share/man`. Read them from the source tree
+with:
+
+```sh
+man ./man/ecl-post.1
+man ./man/ecl.3
+man ./man/ecl_client.3
+```
 
 ## ECL account setup
 
@@ -87,7 +138,9 @@ ecl-post \
 ```
 
 `--instance mu2e` expands to
-`https://dbweb0.fnal.gov/ECL/mu2e`. A full URL can be supplied with `--url`.
+`https://dbweb0.fnal.gov/ECL/mu2e`; `--instance nova` expands to
+`https://dbweb0.fnal.gov/ECL/nova`. Aliases are lower case (`NOvA` returns an
+HTTP 500 from the redirector). A full URL can be supplied with `--url`.
 The current aliases can be found in the
 [Fermilab ECL instance directory](https://dbweb0.fnal.gov/redirector/ecl_instances.html).
 
@@ -238,6 +291,54 @@ The automated suite never posts to Fermilab. It runs against a local mock server
 that verifies XML, binary attachments, signature calculation, HTTP errors, and
 POST preservation through a 303 redirect. Use `--dry-run` before an intentional
 live test and choose a designated sandbox category.
+
+Procedures for posting deliberate test entries to the live Mu2e and NOvA
+logbooks are in [docs/LIVE_TESTING.md](docs/LIVE_TESTING.md).
+
+## Tracking multi-step operations
+
+`scripts/ecl-track` (installed with the CLI) records a procedure as a thread of
+linked entries: a START entry, one entry per step with `related` pointing at
+START, and an END summary listing every step's entry ID. If a post fails, it is
+queued on disk and `ecl-track flush` retries it, so a logbook outage cannot
+stop the procedure. See `man ./man/ecl-track.1`.
+
+```sh
+ecl-track start --op daq-fw-2026-09-23 --title 'DTC firmware v4.2' -i mu2e -c Operations/DAQ
+ecl-track step  --op daq-fw-2026-09-23 --name 'Flash DTC 0-5' --attachment flash.log
+ecl-track end   --op daq-fw-2026-09-23 --status ok
+```
+
+## Claude Code skills
+
+`.claude/skills/` contains three skills. Symlink them into `~/.claude/skills/`
+to use them from any project:
+
+| Skill | Purpose |
+|---|---|
+| `ecl-logbook` | Single entries: credential checks without exposing the password, dry run, confirmation, post, report the link |
+| `ecl-track-steps` | Record a major operation's steps with `ecl-track` |
+| `ecl-embed` | Add ECL posting to another codebase (CMake, pip, shell) with a fail-soft policy |
+
+```sh
+for s in ecl-logbook ecl-track-steps ecl-embed; do
+  ln -sfn "$PWD/.claude/skills/$s" ~/.claude/skills/$s
+done
+```
+
+## Embedding in other projects
+
+The library, the CLI and the Python module are all meant to be called from other
+projects. See [docs/EMBEDDING.md](docs/EMBEDDING.md) for CMake
+(`find_package` or `FetchContent`), Python (pip dependency) and shell usage,
+including a recommended "fail soft" wrapper so a logbook outage cannot break
+the host system.
+
+## Versioning and releases
+
+Releases are tagged `vMAJOR.MINOR.PATCH` on
+[normanajn/ecl-client](https://github.com/normanajn/ecl-client). See
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
