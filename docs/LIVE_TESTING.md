@@ -97,6 +97,20 @@ Endpoint: https://dbweb-b.fnal.gov:8443/ECL/mu2e/E/xml_post?salt=...
 Open the entry in the web UI and check the subject, category and author.
 Write down the ID; rung 4 uses it (`MU2E_ID=...`, `NOVA_ID=...`).
 
+If ECL answers with `HTTP 400` and a generic HTML "400 Bad Request" page, no
+entry was created. ECL gives no specific reason. On 2026-09-23 the cause for
+NOvA was a disabled `Sandbox` category; an unauthenticated request gives the
+same page. Check that the category exists and is enabled, and that you can log
+in to that instance in a browser.
+
+Results so far:
+
+| Date | Instance | Auth | Rung | Entry | Result |
+|---|---|---|---|---|---|
+| 2026-09-23 | mu2e | password | 2 | 5559 | pass (backend dbweb-a) |
+| 2026-09-23 | nova | password | 2 | - | HTTP 400: Sandbox category disabled |
+| 2026-09-23 | nova | password | 2 | 256674 | pass after re-enabling Sandbox (backend dbweb-b) |
+
 ## Rung 3: attachment and image
 
 ```sh

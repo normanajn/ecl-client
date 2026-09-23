@@ -143,6 +143,7 @@ some-report | "$ECL_POST" -i nova -c 'Sandbox' -s 'Nightly report' -T -
 | exit 2, `--category is required` etc. | Local usage error | Fix the arguments |
 | exit 2, `no terminal is available` | No password in env or config | See Credentials above |
 | exit 2, `must not be accessible by group or others` | Config file permissions are not 0600 | Ask the user to run `chmod 600` on it |
+| exit 1, `HTTP 400` + generic HTML `400 Bad Request` page | ECL rejected the entry. Seen for a **disabled or missing category** (NOvA `Sandbox`, 2026-09-23) and for unauthenticated requests. The page does not say which | No entry was created. Ask the user to check the category is enabled/exists and that they can log in to that instance. Do not retry in a loop |
 | exit 1, `HTTP 4xx ... Authentication failed` | Wrong account or password, or account on another instance | Ask the user to check; do not retry in a loop |
 | exit 1, `HTTP 4xx/5xx` mentioning category/form/tag | Unknown category, form or tag | Ask for the exact path, retry once |
 | exit 1, `refusing ECL redirect` | Redirect left `fnal.gov` | Stop and report it; don't use `--insecure` |
